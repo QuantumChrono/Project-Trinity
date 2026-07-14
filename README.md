@@ -1,7 +1,5 @@
 # Project Trinity
 
->*Note: The code in this repository is a reference architecture designed specifically for Kaggle's Dual-T4 environment. File paths are hardcoded to my private Kaggle datasets containing the GGUF and Safetensor models.*
-
 This is Trinity. A zero-cost, self-hosted, private AI platform with virtually no restrictions.
 
 I named it Trinity because it originally ran distributed across my PC, laptop, and phone. Right now it runs on Kaggle's dual-GPU cloud environment to take advantage of 30GB of free VRAM.
@@ -49,15 +47,15 @@ I found out Kaggle notebooks offer 30GB of VRAM (two 15GB NVIDIA T4 GPUs) for fr
 Kaggle only gives you a 20GB working directory. My 4-bit quantized 40B model alone was 24GB. I got around this by uploading the models to a private Kaggle Dataset and mounting it as a read-only drive. Zero disk space used.
 
 **The Linux CUDA Problem**
-I switched from Ollama to `llama.cpp` for better control. But Kaggle runs on Linux, and I couldn't find a pre-compiled Linux CUDA build that worked for me. I tried a Vulkan build first, but it defaulted to system RAM instead of VRAM, making it painfully slow. I eventually hunted down a third-party CUDA build, but the shared-library symlinks were broken. I used AI to help generate Python scripts to manually delete and recreate the `.so` links so the Linux environment could actually boot the server.
+I switched from Ollama to `llama.cpp` for better control. But Kaggle runs on Linux, and I couldn't find a pre-compiled Linux CUDA build that worked for me. I tried a Vulkan build first, but it defaulted to system RAM instead of VRAM, making it painfully slow. I eventually hunted down a third-party CUDA build, but the shared-library symlinks were broken. I had to write Python scripts to manually delete and recreate the `.so` links so the Linux environment could actually boot the server.
 
 **The VRAM Physics (Multi-Model Routing)**
 Once CUDA was working, the 40B model was getting a solid 8 to 9 tokens per second across both GPUs. That's fine for heavy reasoning, but a bit slow for rapid, casual conversation. So I added two 5-bit quantized models on top: a 7B non-thinking model and a 9B vision model. Both respond at blistering speeds.
 
-Because of the 30GB VRAM cap, I can't run all three at once. I used AI to implement a deployment script to split the architecture into two modes: Deep Mode boots the 40B model for heavy logic and coding, Fast Mode boots the 7B and 9B models for instant chat and vision tasks.
+Because of the 30GB VRAM cap, I can't run all three at once. I wrote a script to split the architecture into two modes: Deep Mode boots the 40B model for heavy logic and coding, Fast Mode boots the 7B and 9B models for instant chat and vision tasks.
 
 **The Image API & Memory Routing**
-I wanted image generation natively in the chat. FLUX.1 was too heavy, so I went with CyberRealistic (SD 1.5) and RealVisXL instead. Instead of installing a heavy UI like ComfyUI, I used AI to implement a custom FastAPI server in Python that mimics the Automatic1111 API.
+I wanted image generation natively in the chat. FLUX.1 was too heavy, so I went with CyberRealistic (SD 1.5) and RealVisXL instead. Instead of installing a heavy UI like ComfyUI, I wrote a custom FastAPI server in Python that mimics the Automatic1111 API.
 
 To stop things crashing from Out-Of-Memory errors, I used `torch.cuda.mem_get_info` to check the actual free memory on each GPU. The script dynamically routes image generation to whichever GPU has the most room left.
 
@@ -92,6 +90,21 @@ Starts a Cloudflare Tunnel exposing the local port 3000 to the public internet s
 **Cell 11 or 12 (The Image Engine)**
 Boots the custom FastAPI server. Loads either CyberRealistic or RealVisXL. Automatically chooses full GPU loading or CPU offloading depending on available VRAM, and exposes an API on port 7860.
 
+## Running This Yourself
+
+This isn't a one-click template. It needs a few things from you first:
+
+- A Linux environment with an NVIDIA GPU and CUDA available (Kaggle, Colab, RunPod, vast.ai, or your own box). It won't run on Mac or Windows as-is, Cells 1-2 do Linux-specific shared-library repair on a CUDA build.
+- Your own `llama.cpp` build with CUDA support, and your own GGUF / safetensors model files, sitting somewhere you control.
+
+Everything that used to be hardcoded to my dataset now lives in **Cell 0**, including three flags that cover the Kaggle-vs-everywhere-else differences:
+
+- `RUNNING_ON_KAGGLE` — Kaggle mounts your dataset read-only, so it gets copied into a writable dir first. Off your own machine, set this `False` and the notebook just uses your files in place.
+- `FIX_SYMLINKS` — only needed if your llama.cpp build has the same broken symlinks mine did. Most official builds won't.
+- `CUDA_LIB_PATHS` — wherever CUDA actually lives on your system.
+
+Fill in your paths, filenames, and ports there, run the cells in order, then pick 5A or 5B depending on which mode you want. `examples/my-kaggle-config.py` is the exact Cell 0 I actually run, kept as-is for reference, not meant to be copied verbatim.
+
 ## What I Learned
 
 I started this just wanting a chatbot. I ended up getting a crash course in system architecture.
@@ -99,6 +112,10 @@ I started this just wanting a chatbot. I ended up getting a crash course in syst
 Things like parameters, weights, quantization, and abliteration were just buzzwords to me a few weeks ago. Building this actually taught me what they are and how they physically interact with silicon. I learned how hardware constraints dictate software design, how PyTorch actually manages memory, and how to debug undocumented API handshakes.
 
 It was a masterclass in reading error logs and realizing that in systems engineering, the problem is rarely the AI model itself. It's almost always the plumbing connecting it.
+
+## One Ask
+
+Not a license term, just a personal one. If this saves you a weekend of Kaggle debugging, say my name once. Swayam Mohapatra. QuantumChrono. That's the whole ask.
 
 ## What's Next
 
